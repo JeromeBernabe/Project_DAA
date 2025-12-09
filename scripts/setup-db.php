@@ -136,8 +136,12 @@ $levels = [
     [10, 32000, 'Mythic']
 ];
 
+$stmt = $conn->prepare("INSERT IGNORE INTO level_requirements (level, xp_required, level_name) VALUES (?, ?, ?)");
+
 foreach ($levels as $level) {
-    $conn->query("INSERT IGNORE INTO level_requirements VALUES ({$level[0]}, {$level[1]}, '{$level[2]}')");
+    // $conn->query("INSERT IGNORE INTO level_requirements VALUES ({$level[0]}, {$level[1]}, '{$level[2]}')");
+    $stmt->bind_param("iis", $level[0], $level[1], $level[2]);
+    $stmt->execute();
 }
 
 echo ' Levels inserted!';

@@ -1,0 +1,266 @@
+Database Schema Explanation
+🎮 The Simple Version (Like You're 5)
+Imagine your app is like a big toy box with different containers:
+The Main Containers:
+📦 Users Box - This is YOU! It remembers:
+Your name and password
+How many gold stars (XP) you collected
+What level you are (like in a video game!)
+Your streak - how many days in a row you did stuff
+📝 Tasks Box - These are chores you do ONCE and they're done:
+Like "clean my room" or "finish homework"
+Each task has a difficulty (easy, medium, hard)
+When it needs to be done (deadline)
+If you finished it or not
+🔄 Habits Box - These are things you do EVERY DAY or every few days:
+Like "brush teeth" or "exercise"
+You pick which days (Monday, Wednesday, Friday)
+It counts how many days IN A ROW you did it (your streak!)
+🎯 Combos Box - This is when you group tasks together:
+Like a "homework combo" with math, reading, and science
+The app figures out which order to do them
+⭐ Categories Box - This sorts your stuff:
+"School", "Home", "Fun" - like folders!
+The Helper Containers:
+📊 Weekly Report Card - Every week, it remembers:
+How many tasks you finished
+How much XP you earned
+If you were super productive or not
+🔗 Task Connections - Some tasks need other tasks done first:
+Can't eat dessert before dinner!
+Can't play games before homework!
+🏆 XP History - Every time you earn gold stars, it writes it down:
+When you got them
+How you got them (finishing a task, keeping a streak)
+
+🔧 The Technical Version
+Core Entity Tables
+1. users
+Stores user account information and gamification metrics.
+Key Fields:
+user_id - Primary key, auto-increment
+total_xp, current_level - Gamification progression
+global_streak - Consecutive active days
+last_active_date - For streak calculation
+Purpose: Central user management and global gamification state.
+
+2. tasks
+One-time completable items with full lifecycle tracking.
+Key Fields:
+task_id - Primary key
+user_id, category_id, combo_id - Foreign keys for relationships
+difficulty - ENUM for difficulty levels
+estimated_duration - In minutes, for scheduling algorithm
+deadline, original_deadline - Supports dynamic deadline changes
+priority_score - Calculated by MCDA algorithm (stored for performance)
+status - ENUM: pending, in_progress, completed, skipped, failed
+started_at, completed_at - Timestamps for XP calculation based on speed
+Purpose: Primary entity for one-time tasks with full metadata for all three algorithms.
+Algorithm Support:
+Scheduling: Uses estimated_duration, deadline, priority_score
+MCDA: Stores calculated priority_score
+Analytics: Status and completion timestamps feed clustering
+
+3. task_dependencies
+Defines prerequisite relationships between tasks for critical path analysis.
+Key Fields:
+task_id - The dependent task
+depends_on_task_id - The prerequisite task
+dependency_type - finish_to_start, start_to_start, finish_to_finish
+Purpose: Enables dependency graph construction for dynamic programming scheduling and critical path calculation in combos.
+
+4. habits
+Recurring activities with streak tracking.
+Key Fields:
+habit_id - Primary key
+recurrence_pattern - JSON string storing which days (e.g., {"days": [1,3,5]})
+current_streak, best_streak - Gamification metrics
+last_completed_date - For streak validation
+is_active - Soft delete flag
+Purpose: Separate entity from tasks due to fundamentally different lifecycle (recurring vs one-time).
+
+5. habit_completions
+Daily completion log for habits.
+Key Fields:
+habit_id, user_id - Composite key components
+completion_date - Date of completion
+completed_at - Timestamp for analytics
+xp_earned - XP from this completion
+Purpose: Historical tracking for streak calculation and productivity analytics. The unique constraint on (habit_id, completion_date) enforces once-per-day rule.
+
+6. combos
+Groups of tasks analyzed as a unit with critical path.
+Key Fields:
+combo_id - Primary key
+name, description - User-defined metadata
+deadline - Overall combo deadline
+critical_path_data - JSON storage for algorithm results (task sequence, slack time, bottlenecks)
+status, completed_at, xp_earned - Lifecycle tracking
+Purpose: Container for related tasks to enable critical path analysis and combo-based XP rewards.
+
+Algorithm Support Tables
+7. mcda_criteria
+User-configurable criteria for Multi-Criteria Decision Analysis.
+Key Fields:
+criteria_name - e.g., "urgency", "importance", "effort"
+weight - DECIMAL(3,2) from 0.00 to 1.00
+is_active - Allow users to toggle criteria
+Purpose: Flexible MCDA configuration. Each user can define custom criteria and weights.
+
+8. task_criteria_scores
+Individual criterion scores for each task.
+Key Fields:
+task_id, criteria_id - Composite relationship
+score - Normalized score for this criterion
+Purpose: Store individual scores that, when weighted by mcda_criteria.weight, calculate the final tasks.priority_score. Allows recalculation when weights change.
+Algorithm: priority_score = Σ(criterion_score × criterion_weight)
+
+9. scheduled_tasks
+Output from the dynamic programming scheduling algorithm.
+Key Fields:
+task_id, scheduled_date - What and when
+scheduled_start_time, scheduled_end_time - Time slots
+is_current - Flags the most recent schedule (allows history)
+Purpose: Store algorithm results. When user triggers rescheduling, old schedules are marked is_current = FALSE and new schedule is inserted. Maintains scheduling history.
+
+10. weekly_analytics
+Aggregated productivity metrics for clustering algorithm input.
+Key Fields:
+week_start_date, week_end_date - Week boundary
+total_tasks_completed, total_tasks_failed, etc. - Aggregate metrics
+avg_completion_time - Average task duration
+cluster_label - Result from clustering algorithm
+productivity_score - Calculated metric
+analytics_data - JSON for detailed time-of-day patterns, etc.
+Purpose: Pre-aggregated data for clustering algorithm. Weekly granularity balances detail with manageability. The clustering algorithm reads from this table to identify productivity patterns.
+Data Flow: Tasks/Habits → Weekly aggregation → Clustering → Pattern identification
+
+11. clustering_results
+Discovered productivity patterns from clustering algorithm.
+Key Fields:
+cluster_label - Numeric cluster ID
+cluster_name - Human-readable (e.g., "Morning Power User")
+cluster_characteristics - JSON with cluster centroid, variance, typical behaviors
+member_count - Number of weeks in this cluster
+Purpose: Store discovered patterns. Each cluster represents a productivity "mode" the user operates in. Used for insights like "You're 70% more productive when you complete 3+ tasks before noon."
+
+Gamification Tables
+12. xp_transactions
+Detailed log of all XP gains.
+Key Fields:
+source_type, source_id - What generated XP (task, habit, combo, etc.)
+xp_amount - Amount earned
+created_at - Timestamp
+Purpose: Complete audit trail for XP. Enables speed-based XP calculation by comparing task started_at and completed_at against expected duration. Also powers XP history graphs.
+XP Calculation Logic:
+completion_speed_ratio = estimated_duration / actual_duration
+if completion_speed_ratio > 1.0:
+    xp_bonus = base_xp * (completion_speed_ratio - 1.0)
+
+
+13. level_requirements
+XP thresholds for each level.
+Key Fields:
+level - Primary key (1-10)
+xp_required - Total XP needed to reach this level
+level_name - Display name
+Purpose: Defines progression curve. Pre-populated with exponential growth. Separating this allows easy rebalancing without code changes.
+
+Supporting Tables
+14. categories
+User-defined task/habit categories.
+Key Fields:
+name - Category name
+color - Hex color for UI
+user_id - User-scoped categories
+Purpose: Organizational structure and analytics filtering (e.g., "show productivity by category").
+
+15. deadline_changes
+Audit log for dynamic deadline modifications.
+Key Fields:
+task_id - Which task
+old_deadline, new_deadline - The change
+reason - User-provided explanation
+changed_by_user - TRUE if manual, FALSE if system-suggested
+Purpose: Track deadline evolution for accountability and analytics (e.g., "How often do I push deadlines?").
+
+🔄 Data Flow Examples
+Example 1: User Completes a Task
+User marks task as completed → tasks.status = 'completed', tasks.completed_at = NOW()
+Calculate XP based on started_at vs completed_at vs estimated_duration
+Insert into xp_transactions
+Update users.total_xp and check if level up needed
+Check if global streak continues → update users.global_streak
+Add to weekly aggregation for analytics
+Example 2: Scheduling Algorithm Run
+User clicks "Schedule Today"
+Algorithm reads:
+All pending tasks with deadlines
+Task dependencies from task_dependencies
+Priority scores from tasks.priority_score
+Dynamic programming solves optimal schedule
+Mark old schedules is_current = FALSE
+Insert new schedule into scheduled_tasks
+Example 3: Critical Path Analysis
+User creates/updates a combo
+Algorithm reads all tasks where combo_id matches
+Build dependency graph from task_dependencies
+Calculate critical path, slack times, bottlenecks
+Store results in combos.critical_path_data as JSON
+Example 4: Weekly Analytics & Clustering
+At week end, aggregate all completions into weekly_analytics
+Clustering algorithm runs on past N weeks of analytics
+Identifies patterns (e.g., high productivity weeks share common traits)
+Updates clustering_results with discovered patterns
+Assigns current week's cluster_label
+
+🎯 Design Decisions
+Why Separate Tasks and Habits?
+Different lifecycles: Tasks are one-time, habits recur
+Different completion logic: Tasks have start/end times, habits have daily completion
+Different streak logic: Habits track per-habit streaks, tasks contribute to global streak
+Query performance: Avoids complex WHERE clauses filtering recurring vs one-time
+Why Store Calculated priority_score?
+Performance: MCDA calculation can be expensive with many criteria
+Consistency: Schedule algorithm needs stable priorities during execution
+Recalculation trigger: Can be updated when criteria weights change or task attributes update
+Why JSON Fields?
+recurrence_pattern: Variable-length array of days, flexible for future patterns (e.g., "every other day")
+critical_path_data: Complex nested structure (task sequences, slack times), easier than normalized tables
+analytics_data: Flexible schema for experimental metrics without migrations
+Why is_current Flag vs Deleting Old Schedules?
+Audit trail: User can see how schedules changed over time
+Learning: Algorithm can learn from past scheduling decisions
+Simple queries: WHERE is_current = TRUE gets active schedule without complex date logic
+Why Weekly vs Daily Analytics?
+Balance: Weekly provides enough data points without overwhelming storage
+Patterns: Weekly cycles match human behavior (weekdays vs weekends)
+Practical limit: User asked for "practical limit" - 52 weeks = 1 year of history is reasonable
+
+📈 Scalability Considerations
+Indexes Added:
+User lookups: username, email
+Status filtering: (user_id, status) on tasks
+Date range queries: deadline, scheduled_date
+Analytics: (user_id, week_start_date)
+Potential Optimizations:
+Partitioning: habit_completions and xp_transactions by date for old data archival
+Materialized views: Pre-calculate complex analytics queries
+Caching: Store frequently accessed data (current level requirements, active habits)
+Archival strategy: Move completed tasks/combos older than X months to archive tables
+
+🔐 Data Integrity
+Foreign Key Constraints:
+CASCADE DELETE: When user deleted, all their data removed
+SET NULL: When category deleted, tasks remain but lose category
+RESTRICT: Dependencies prevent deletion of referenced tasks
+Unique Constraints:
+Prevent duplicate habit completions on same day
+Ensure one category name per user
+Prevent duplicate task dependencies
+CHECK Constraints (Future Enhancement):
+Could add:
+priority_score BETWEEN 0 AND 100
+weight in mcda_criteria BETWEEN 0 AND 1
+Deadline validation: deadline >= created_at
+

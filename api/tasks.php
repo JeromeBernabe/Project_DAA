@@ -69,6 +69,28 @@ if ($action === 'list') {
     $task = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
+    if (!$task) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'error' => 'Task not found']);
+        exit;
+    }
+
+    // Check for incomplete dependencies
+    $sql = "SELECT COUNT(*) as unfinished FROM task_dependencies td
+            JOIN tasks t ON t.task_id = td.depends_on_task_id
+            WHERE td.task_id = ? AND t.status != 'completed'";
+    $stmt = $db->prepare($sql);
+    $stmt->bind_param('i', $task_id);
+    $stmt->execute();
+    $depResult = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if ($depResult['unfinished'] > 0) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'Cannot complete task: unfinished dependencies exist']);
+        exit;
+    }
+
     // Calculate XP (10-50 based on difficulty)
     $xp_map = ['easy' => 10, 'medium' => 25, 'hard' => 50, 'extreme' => 100];
     $xp = $xp_map[$task['difficulty']] ?? 25;

@@ -30,6 +30,18 @@ if ($action === 'list') {
     $habits = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
     
+    // Check completion status for each habit today
+    $today = date('Y-m-d');
+    foreach ($habits as &$habit) {
+        $sql = "SELECT completion_id FROM habit_completions WHERE habit_id = ? AND completion_date = ?";
+        $stmt = $db->prepare($sql);
+        $stmt->bind_param('is', $habit['habit_id'], $today);
+        $stmt->execute();
+        $completion = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        $habit['completed_today'] = !empty($completion);
+    }
+    
     echo json_encode(['success' => true, 'habits' => $habits]);
 
 } elseif ($action === 'create') {
@@ -54,6 +66,21 @@ if ($action === 'list') {
     $data = json_decode(file_get_contents('php://input'), true);
     $habit_id = $data['habit_id'] ?? 0;
 
+    // Check if already completed today
+    $today = date('Y-m-d');
+    $sql = "SELECT completion_id FROM habit_completions WHERE habit_id = ? AND completion_date = ?";
+    $stmt = $db->prepare($sql);
+    $stmt->bind_param('is', $habit_id, $today);
+    $stmt->execute();
+    $existing = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if ($existing) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'Habit already completed today. Come back tomorrow!']);
+        exit;
+    }
+
     // Get habit info
     $sql = "SELECT difficulty, current_streak FROM habits WHERE habit_id = ?";
     $stmt = $db->prepare($sql);
@@ -67,8 +94,7 @@ if ($action === 'list') {
     $xp = $xp_map[$habit['difficulty']] ?? 10;
 
     // Add completion record
-    $today = date('Y-m-d');
-    $sql = "INSERT IGNORE INTO habit_completions (habit_id, user_id, completion_date, xp_earned) VALUES (?, ?, ?, ?)";
+    $sql = "INSERT INTO habit_completions (habit_id, user_id, completion_date, xp_earned) VALUES (?, ?, ?, ?)";
     $stmt = $db->prepare($sql);
     $stmt->bind_param('iisi', $habit_id, $user_id, $today, $xp);
     $stmt->execute();
@@ -104,7 +130,79 @@ if ($action === 'list') {
     $stmt->execute();
     $stmt->close();
 
-    echo json_encode(['success' => true, 'xp_earned' => $xp, 'new_streak' => $new_streak]);
+    // Check for level up
+    $sql = "SELECT total_xp, current_level FROM users WHERE user_id = ?";
+    $stmt = $db->prepare($sql);
+    $stmt->bind_param('i', $user_id);
+    $stmt->execute();
+    $user = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    $sql = "SELECT level, xp_required FROM level_requirements WHERE xp_required <= ? ORDER BY xp_required DESC LIMIT 1";
+    $stmt = $db->prepare($sql);
+    if ($stmt) {
+        $stmt->bind_param('i', $user['total_xp']);
+        $stmt->execute();
+        $level_row = $stmt->get_result()->fetch_assoc();
+        $new_level = $level_row ? (int)$level_row['level'] : $user['current_level'];
+        $stmt->close();
+    } else {
+        $new_level = $user['current_level'];
+    }
+
+    if ($new_level > $user['current_level']) {
+        $sql = "UPDATE users SET current_level = ? WHERE user_id = ?";
+        $stmt = $db->prepare($sql);
+        $stmt->bind_param('ii', $new_level, $user_id);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    // Calculate global_streak: count consecutive days with at least one habit completion
+    $sql = "SELECT DISTINCT DATE(completion_date) as comp_date FROM habit_completions WHERE user_id = ? ORDER BY comp_date DESC LIMIT 365";
+    $stmt = $db->prepare($sql);
+    $stmt->bind_param('i', $user_id);
+    $stmt->execute();
+    $dates = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    
+    $global_streak = 0;
+    $today_str = date('Y-m-d');
+    
+    if (!empty($dates)) {
+        // Check if today is in the list (most recent date)
+        $first_date_str = $dates[0]['comp_date'];
+        
+        // If today is the most recent completion, count backwards
+        if ($first_date_str === $today_str) {
+            $global_streak = 1;
+            $last_ts = strtotime($first_date_str);
+            
+            for ($i = 1; $i < count($dates); $i++) {
+                $current_ts = strtotime($dates[$i]['comp_date']);
+                $diff_days = ($last_ts - $current_ts) / 86400;
+                
+                if ($diff_days == 1) {
+                    $global_streak++;
+                    $last_ts = $current_ts;
+                } else {
+                    break;
+                }
+            }
+        } else {
+            // Today is not the most recent, streak is broken
+            $global_streak = 1;
+        }
+    }
+    
+    // Update user's global_streak
+    $sql = "UPDATE users SET global_streak = ? WHERE user_id = ?";
+    $stmt = $db->prepare($sql);
+    $stmt->bind_param('ii', $global_streak, $user_id);
+    $stmt->execute();
+    $stmt->close();
+
+    echo json_encode(['success' => true, 'xp_earned' => $xp, 'new_streak' => $new_streak, 'global_streak' => $global_streak]);
 }
 
 $db->close();

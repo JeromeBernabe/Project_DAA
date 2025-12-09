@@ -30,12 +30,24 @@ $user = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
 // Get pending tasks
-$sql = "SELECT task_id, title, difficulty, deadline FROM tasks WHERE user_id = ? AND status = 'pending' LIMIT 5";
+$sql = "SELECT task_id, title, difficulty, deadline, status FROM tasks WHERE user_id = ? AND status = 'pending' LIMIT 5";
 $stmt = $db->prepare($sql);
 $stmt->bind_param('i', $user_id);
 $stmt->execute();
 $tasks = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
+
+// Get dependencies for each task
+$dependencies = [];
+foreach ($tasks as $task) {
+    $sql = "SELECT td.depends_on_task_id, t.title, t.status FROM task_dependencies td JOIN tasks t ON t.task_id = td.depends_on_task_id WHERE td.task_id = ?";
+    $stmt = $db->prepare($sql);
+    $stmt->bind_param('i', $task['task_id']);
+    $stmt->execute();
+    $deps = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    $dependencies[$task['task_id']] = $deps;
+}
 
 // Get active habits
 $sql = "SELECT habit_id, title, current_streak, best_streak FROM habits WHERE user_id = ? AND is_active = 1 LIMIT 5";
@@ -44,6 +56,18 @@ $stmt->bind_param('i', $user_id);
 $stmt->execute();
 $habits = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
+
+// Check completion status for each habit today
+$today = date('Y-m-d');
+foreach ($habits as &$habit) {
+    $sql = "SELECT completion_id FROM habit_completions WHERE habit_id = ? AND completion_date = ?";
+    $stmt = $db->prepare($sql);
+    $stmt->bind_param('is', $habit['habit_id'], $today);
+    $stmt->execute();
+    $completion = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    $habit['completed_today'] = !empty($completion);
+}
 
 // Get XP transactions this week
 $sql = "SELECT SUM(xp_amount) as weekly_xp FROM xp_transactions WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
@@ -67,6 +91,7 @@ echo json_encode([
     'success' => true,
     'user' => $user,
     'tasks' => $tasks,
+    'dependencies' => $dependencies,
     'habits' => $habits,
     'weekly_xp' => $weekly_xp,
     'next_level_xp' => $next_req['xp_required'] ?? 0
