@@ -1084,33 +1084,17 @@ async function loadAnalytics() {
 async function loadProfile() {
   try {
     const userId = localStorage.getItem("user_id")
-    const response = await fetch(`api/dashboard.php?user_id=${userId}`)
+    const response = await fetch(`api/analytics.php?action=overview&user_id=${userId}`)
     const data = await response.json()
 
     if (!data.success) return alert('Error loading profile')
 
-    const user = data.user
+    const overview = data.tasks
+    const habits = data.habits
     
-    // Calculate overview stats from tasks
-    const allTasksRes = await fetch(`api/tasks.php?action=list&user_id=${userId}`)
-    const allTasksData = await allTasksRes.json()
-    const allTasks = allTasksData.success ? allTasksData.tasks : []
-    
-    const overview = {
-      total_tasks: allTasks.length,
-      completed_tasks: allTasks.filter(t => t.status === 'completed').length,
-      pending_tasks: allTasks.filter(t => t.status === 'pending').length
-    }
-    
-    // Calculate habits stats
-    const allHabitsRes = await fetch(`api/habits.php?action=list&user_id=${userId}`)
-    const allHabitsData = await allHabitsRes.json()
-    const allHabits = allHabitsData.success ? allHabitsData.habits : []
-    
-    const habits = {
-      active_habits: allHabits.length,
-      avg_streak: allHabits.length > 0 ? Math.round(allHabits.reduce((sum, h) => sum + (h.current_streak || 0), 0) / allHabits.length) : 0
-    }
+    const dashboardResponse = await fetch(`api/dashboard.php?user_id=${userId}`)
+    const dashboardData = await dashboardResponse.json()
+    const user = dashboardData.success ? dashboardData.user : {}
 
     let html = `
       <h2 class="analytics-title">👤 My Profile</h2>
@@ -1126,7 +1110,7 @@ async function loadProfile() {
           <div class="xp-card">
             <div class="xp-card-label">TOTAL XP</div>
             <div class="xp-card-value">${user.total_xp || 0}</div>
-            <div class="xp-card-weekly">📊 ${data.weekly_xp || 0} XP this week</div>
+            <div class="xp-card-weekly">📊 ${dashboardData.weekly_xp || 0} XP this week</div>
           </div>
 
           <div class="streak-card">
@@ -1160,9 +1144,9 @@ async function loadProfile() {
           <div class="level-progress-card">
             <div class="level-progress-label">Level Progress</div>
             <div class="level-progress-bar">
-              <div class="level-progress-fill" style="width:${Math.min((user.total_xp % (data.next_level_xp || 100)) / (data.next_level_xp || 100) * 100, 100)}%;"></div>
+              <div class="level-progress-fill" style="width:${Math.min((user.total_xp % (dashboardData.next_level_xp || 100)) / (dashboardData.next_level_xp || 100) * 100, 100)}%;"></div>
             </div>
-            <div class="level-progress-text">Level ${(user.current_level || 0) + 1}: ${user.total_xp || 0} / ${data.next_level_xp || 0} XP</div>
+            <div class="level-progress-text">Level ${(user.current_level || 0) + 1}: ${user.total_xp || 0} / ${dashboardData.next_level_xp || 0} XP</div>
           </div>
         </div>
       </div>
@@ -1173,7 +1157,7 @@ async function loadProfile() {
           <div class="achievement-badge achievement-badge-task-master">
             <div class="achievement-icon">✓</div>
             <div class="achievement-title">Total Completed</div>
-            <div class="achievement-text">${overview.completed_tasks} tasks done</div>
+            <div class="achievement-text">${overview.completed_tasks || 0} tasks done</div>
           </div>
           <div class="achievement-badge achievement-badge-on-fire">
             <div class="achievement-icon">🔥</div>
@@ -1183,12 +1167,12 @@ async function loadProfile() {
           <div class="achievement-badge achievement-badge-level">
             <div class="achievement-icon">📋</div>
             <div class="achievement-title">Active Tasks</div>
-            <div class="achievement-text">${overview.pending_tasks} task${overview.pending_tasks !== 1 ? 's' : ''} remaining</div>
+            <div class="achievement-text">${overview.pending_tasks || 0} task${(overview.pending_tasks || 0) !== 1 ? 's' : ''} remaining</div>
           </div>
           <div class="achievement-badge achievement-badge-habit">
             <div class="achievement-icon">💪</div>
             <div class="achievement-title">Building Habits</div>
-            <div class="achievement-text">${habits.active_habits} habit${habits.active_habits !== 1 ? 's' : ''} active</div>
+            <div class="achievement-text">${habits.active_habits || 0} habit${(habits.active_habits || 0) !== 1 ? 's' : ''} active</div>
           </div>
         </div>
       </div>
