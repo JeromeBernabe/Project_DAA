@@ -352,14 +352,18 @@ async function loadTasksAndHabits() {
       if (tasks.length > 0) {
         html += tasks.map(t => `
           <div class="task-list">
-            <div>
+            <div class="task-list-content">
               <div class="task-list-title">${t.title}</div>
               <div class="task-list-meta">
                 <span class="difficulty ${t.difficulty}" style="font-size:11px;">${t.difficulty}</span>
                 <span class="task-list-status">Status: ${t.status}</span>
               </div>
             </div>
-            ${t.status === "pending" ? `<button class="complete-btn btn-sm" onclick="completeTask(${t.task_id})">Complete</button>` : '<span style="color:#4CAF50;font-weight:bold;">✅</span>'}
+            <div class="task-list-actions">
+              ${t.status === "pending" ? `<button class="complete-btn btn-sm" onclick="completeTask(${t.task_id})">Complete</button>` : '<span style="color:#4CAF50;font-weight:bold;">✅</span>'}
+              <button class="edit-btn btn-sm" onclick='editTask(${JSON.stringify(t)})'>Edit</button>
+              <button class="delete-btn btn-sm" onclick="deleteTask(${t.task_id})">Delete</button>
+            </div>
           </div>
         `).join("")
       } else {
@@ -386,6 +390,8 @@ async function loadTasksAndHabits() {
             <div class="habit-list-actions">
               ${h.completed_today ? '<span class="habit-list-done">✅ Done</span>' : ''}
               <button class="complete-btn btn-sm" onclick="completeHabit(${h.habit_id})" ${h.completed_today ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>Do It</button>
+              <button class="edit-btn btn-sm" onclick='editHabit(${JSON.stringify(h)})'>Edit</button>
+              <button class="delete-btn btn-sm" onclick="deleteHabit(${h.habit_id})">Delete</button>
             </div>
           </div>
         `).join("")
@@ -1206,4 +1212,98 @@ function handleLogout() {
   localStorage.removeItem("user_id")
   currentUser = null
   showAuthPage()
+}
+
+async function editTask(task) {
+  const newTitle = prompt("Enter the new task title:", task.title);
+  const newDifficulty = prompt("Enter the new difficulty (easy, medium, hard, extreme):", task.difficulty);
+
+  if (newTitle && newDifficulty) {
+    try {
+      const userId = localStorage.getItem("user_id");
+      const response = await fetch(`api/tasks.php?action=update&user_id=${userId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task_id: task.task_id, title: newTitle, difficulty: newDifficulty }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        loadTasksAndHabits();
+      } else {
+        alert("Error updating task: " + data.error);
+      }
+    } catch (error) {
+      alert("Error: " + error.message);
+    }
+  }
+}
+
+async function deleteTask(taskId) {
+  if (confirm("Are you sure you want to delete this task?")) {
+    try {
+      const userId = localStorage.getItem("user_id");
+      const response = await fetch(`api/tasks.php?action=delete&user_id=${userId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task_id: taskId }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        loadTasksAndHabits();
+      } else {
+        alert("Error deleting task: " + data.error);
+      }
+    } catch (error) {
+      alert("Error: " + error.message);
+    }
+  }
+}
+
+async function editHabit(habit) {
+  const newTitle = prompt("Enter the new habit title:", habit.title);
+  const newDifficulty = prompt("Enter the new difficulty (easy, medium, hard, extreme):", habit.difficulty);
+
+  if (newTitle && newDifficulty) {
+    try {
+      const userId = localStorage.getItem("user_id");
+      const response = await fetch(`api/habits.php?action=update&user_id=${userId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ habit_id: habit.habit_id, title: newTitle, difficulty: newDifficulty }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        loadTasksAndHabits();
+      } else {
+        alert("Error updating habit: " + data.error);
+      }
+    } catch (error) {
+      alert("Error: " + error.message);
+    }
+  }
+}
+
+async function deleteHabit(habitId) {
+  if (confirm("Are you sure you want to delete this habit?")) {
+    try {
+      const userId = localStorage.getItem("user_id");
+      const response = await fetch(`api/habits.php?action=delete&user_id=${userId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ habit_id: habitId }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        loadTasksAndHabits();
+      } else {
+        alert("Error deleting habit: " + data.error);
+      }
+    } catch (error) {
+      alert("Error: " + error.message);
+    }
+  }
 }

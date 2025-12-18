@@ -147,6 +147,36 @@ if ($action === 'list') {
     }
 
     echo json_encode(['success' => true, 'xp_earned' => $xp]);
+} elseif ($action === 'update') {
+    $data = json_decode(file_get_contents('php://input'), true);
+    $task_id = $data['task_id'] ?? 0;
+    $title = $data['title'] ?? '';
+    $difficulty = $data['difficulty'] ?? 'medium';
+
+    $sql = "UPDATE tasks SET title = ?, difficulty = ? WHERE task_id = ? AND user_id = ?";
+    $stmt = $db->prepare($sql);
+    $stmt->bind_param('ssii', $title, $difficulty, $task_id, $user_id);
+
+    if ($stmt->execute()) {
+        echo json_encode(['success' => true]);
+    } else {
+        echo json_encode(['success' => false, 'error' => $db->error]);
+    }
+    $stmt->close();
+} elseif ($action === 'delete') {
+    $data = json_decode(file_get_contents('php://input'), true);
+    $task_id = $data['task_id'] ?? 0;
+
+    $sql = "DELETE FROM tasks WHERE task_id = ? AND user_id = ?";
+    $stmt = $db->prepare($sql);
+    $stmt->bind_param('ii', $task_id, $user_id);
+
+    if ($stmt->execute()) {
+        echo json_encode(['success' => true]);
+    } else {
+        echo json_encode(['success' => false, 'error' => $db->error]);
+    }
+    $stmt->close();
 }
 
 $db->close();

@@ -454,6 +454,12 @@ nav {
   margin-bottom: 8px;
 }
 
+.task-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .task-list-title {
   margin: 0;
   font-size: 15px;
@@ -516,6 +522,34 @@ nav {
 .btn-sm {
   padding: 6px 12px;
   font-size: 12px;
+}
+
+.edit-btn {
+  background: var(--warning);
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.edit-btn:hover {
+  background: #d97706;
+}
+
+.delete-btn {
+  background: var(--danger);
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.delete-btn:hover {
+  background: #c82333;
 }
 
 .empty-state {

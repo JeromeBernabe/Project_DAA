@@ -203,6 +203,36 @@ if ($action === 'list') {
     $stmt->close();
 
     echo json_encode(['success' => true, 'xp_earned' => $xp, 'new_streak' => $new_streak, 'global_streak' => $global_streak]);
+} elseif ($action === 'update') {
+    $data = json_decode(file_get_contents('php://input'), true);
+    $habit_id = $data['habit_id'] ?? 0;
+    $title = $data['title'] ?? '';
+    $difficulty = $data['difficulty'] ?? 'medium';
+
+    $sql = "UPDATE habits SET title = ?, difficulty = ? WHERE habit_id = ? AND user_id = ?";
+    $stmt = $db->prepare($sql);
+    $stmt->bind_param('ssii', $title, $difficulty, $habit_id, $user_id);
+
+    if ($stmt->execute()) {
+        echo json_encode(['success' => true]);
+    } else {
+        echo json_encode(['success' => false, 'error' => $db->error]);
+    }
+    $stmt->close();
+} elseif ($action === 'delete') {
+    $data = json_decode(file_get_contents('php://input'), true);
+    $habit_id = $data['habit_id'] ?? 0;
+
+    $sql = "UPDATE habits SET is_active = 0 WHERE habit_id = ? AND user_id = ?";
+    $stmt = $db->prepare($sql);
+    $stmt->bind_param('ii', $habit_id, $user_id);
+
+    if ($stmt->execute()) {
+        echo json_encode(['success' => true]);
+    } else {
+        echo json_encode(['success' => false, 'error' => $db->error]);
+    }
+    $stmt->close();
 }
 
 $db->close();
